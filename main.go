@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -77,17 +78,47 @@ func handleAuthenticationRequest(req *http.Request) ([]byte, error) {
 	return respBody, nil
 }
 
-func main() {
-	mediaBrowser := &mediaBrowser{
+func buildMediaBrowser() (*mediaBrowser, error) {
+	token := os.Getenv("DEVICE_TOKEN")
+	if token == "" {
+		return nil, errors.New("DEVICE_TOKEN is not set")
+	}
+	deviceId := os.Getenv("DEVICE_ID")
+	if deviceId == "" {
+		return nil, errors.New("DEVICE_ID is not set")
+	}
+	return &mediaBrowser{
 		client:   "Elliott Jellyfin Launcher",
 		device:   "Laptop",
-		deviceId: "TW96aWxsYS81LjAgKFgxMTsgTGludXggeDg2XzY0OyBydjo5NC4wKSBHZWNrby8yMDEwMDEwMSBGaXJlZm94Lzk0LjB8MTYzODA1MzA2OTY4Mw11",
+		deviceId: deviceId,
 		version:  "10.8.8",
-		token:    "c9fbf0c11ba84e05ad4d08a78e8cc955",
+		token:    token,
+	}, nil
+}
+
+func buildAuthenticationRequest() (*authenticationRequest, error) {
+	username := os.Getenv("USERNAME")
+	if username == "" {
+		return nil, errors.New("USERNAME is not set")
 	}
-	authenticationRequest := &authenticationRequest{
-		Username: "elliott",
-		Pw:       "qqqqqq",
+	password := os.Getenv("PASSWORD")
+	if password == "" {
+		return nil, errors.New("PASSWORD is not set")
+	}
+	return &authenticationRequest{
+		Username: username,
+		Pw:       password,
+	}, nil
+}
+
+func main() {
+	mediaBrowser, err := buildMediaBrowser()
+	if err != nil {
+		panic(err)
+	}
+	authenticationRequest, err := buildAuthenticationRequest()
+	if err != nil {
+		panic(err)
 	}
 	authRequest, err := makeAuthenticationRequest(*mediaBrowser, *authenticationRequest)
 	if err != nil {

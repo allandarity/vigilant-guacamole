@@ -1,0 +1,6 @@
+### .env
+  - JELLYFIN_HOST=
+  - DEVICE_ID
+  - USERNAME
+  - PASSWORD
+  - DEVICE_TOKEN
