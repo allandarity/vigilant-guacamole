@@ -2,12 +2,15 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+
+	"github.com/redis/go-redis/v9"
 )
 
 type mediaBrowser struct {
@@ -43,13 +46,15 @@ type getItems struct {
 }
 
 type Items struct {
-	Items []ItemsElement `json:"Items"`
+	ItemElements []ItemsElement `json:"Items"`
 }
 
 type ItemsElement struct {
-	Name string `json:"Name"`
-	Id   string `json:"Id"`
-	Type string `json:"Type"`
+	Name            string  `json:"Name"`
+	Id              string  `json:"Id"`
+	Type            string  `json:"Type"`
+	ProductionYear  int16   `json:"ProductionYear"`
+	CommunityRating float32 `json:"CommunityRating"`
 }
 
 func (ie ItemsElement) isEmpty() bool {
@@ -118,8 +123,7 @@ func buildAuthenticationRequest() (authenticationRequest, error) {
 	}, nil
 }
 
-func makeGetMovieParentIdRequest(mediaBrowser mediaBrowser, authResponse authenticationResponse) (*http.Request, error) {
-	url := fmt.Sprintf("%s/Users/%s/Items", mediaBrowser.host, authResponse.User.Id)
+func makeGetRequest(url string, mediaBrowser mediaBrowser) (*http.Request, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -148,37 +152,40 @@ func makeHttpClientRequest(req *http.Request) ([]byte, error) {
 	return respBody, nil
 }
 
-func handleGetMovieParentIdRequest(req *http.Request) (Items, error) {
-	respBody, err := makeHttpClientRequest(req)
+func makeRequest[T any](req *http.Request, target *T) error {
+	resp, err := makeHttpClientRequest(req)
 	if err != nil {
 		fmt.Println("Error reading response body:", err)
-		return Items{}, err
+		return err
 	}
+
+	err = json.Unmarshal(resp, target)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func handleGetMovieParentIdRequest(req *http.Request) (Items, error) {
 	var items Items
-	unmarshalErr := json.Unmarshal(respBody, &items)
-	if unmarshalErr != nil {
-		return Items{}, unmarshalErr
+	err := makeRequest(req, &items)
+	if err != nil {
+		return Items{}, err
 	}
 	return items, nil
 }
 
 func handleMakeAuthenticationRequest(req *http.Request) (authenticationResponse, error) {
-	authResponseBody, err := makeHttpClientRequest(req)
-	if err != nil {
-		fmt.Println(err)
-		return authenticationResponse{}, err
-	}
 	var authResponse authenticationResponse
-	unmarshalErr := json.Unmarshal(authResponseBody, &authResponse)
-	if unmarshalErr != nil {
-		fmt.Println(err)
+	err := makeRequest(req, &authResponse)
+	if err != nil {
 		return authenticationResponse{}, err
 	}
 	return authResponse, nil
 }
 
 func getItemByName(items Items, name string) ItemsElement {
-	for _, item := range items.Items {
+	for _, item := range items.ItemElements {
 		if item.Name == name {
 			return item
 		}
@@ -196,6 +203,59 @@ func getMoviesParentId(items Items) (string, error) {
 		return "", fmt.Errorf("the collection of the wrong type - wasnt %s", movies)
 	}
 	return collection.Id, nil
+}
+
+func addToRedis(items Items, rdb *redis.Client, ctx context.Context) error {
+	pipe := rdb.Pipeline()
+	for _, i := range items.ItemElements {
+		key := fmt.Sprintf("movie:%s", i.Id)
+		structBytes, err := json.Marshal(i)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+		pipe.Set(ctx, key, structBytes, 0)
+	}
+	_, err := pipe.Exec(ctx)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func getRandomKeysFromRedis(n int, rdb *redis.Client, ctx context.Context) ([]ItemsElement, error) {
+	var items []ItemsElement
+	for i := 0; i < n; i++ {
+		item, err := rdb.RandomKey(ctx).Result()
+		if err != nil {
+			fmt.Println("failed to get randomkey")
+			return nil, err
+		}
+		unmarshalledItem, err := getItemFromRedis(item, rdb, ctx)
+		if err != nil {
+			fmt.Println("Failed to unmarshal")
+			fmt.Println(item)
+			return nil, err
+		}
+		items = append(items, unmarshalledItem)
+	}
+	return items, nil
+}
+
+func getItemFromRedis(key string, rdb *redis.Client, ctx context.Context) (ItemsElement, error) {
+	item, err := rdb.Get(ctx, key).Result()
+	if err != nil {
+		fmt.Println("couldnt get key")
+		return ItemsElement{}, err
+	}
+	var itemElement ItemsElement
+	jsonErr := json.Unmarshal([]byte(item), &itemElement)
+	if jsonErr != nil {
+		fmt.Println("failed to get key from redis")
+		fmt.Println(item)
+		return ItemsElement{}, jsonErr
+	}
+	return itemElement, nil
 }
 
 func main() {
@@ -219,7 +279,8 @@ func main() {
 	fmt.Println(authResponse.User.Name)
 	fmt.Println(authResponse.Token)
 
-	parentFolderRequest, err := makeGetMovieParentIdRequest(mediaBrowser, authResponse)
+	getMovieParentIdRequestUrl := fmt.Sprintf("%s/Users/%s/Items", mediaBrowser.host, authResponse.User.Id)
+	parentFolderRequest, err := makeGetRequest(getMovieParentIdRequestUrl, mediaBrowser)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -227,6 +288,34 @@ func main() {
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Println(parentFolderResponse.Items)
-	fmt.Println(getMoviesParentId(parentFolderResponse))
+	fmt.Println(parentFolderResponse.ItemElements)
+	parentId, err := getMoviesParentId(parentFolderResponse)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	getAllMoviesRequestUrl := fmt.Sprintf("%s/Users/%s/Items?ParentId=%s", mediaBrowser.host, authResponse.User.Id, parentId)
+	allMovieRequest, err := makeGetRequest(getAllMoviesRequestUrl, mediaBrowser)
+	if err != nil {
+		fmt.Println(err)
+	}
+	movieItems, handleErr := handleGetMovieParentIdRequest(allMovieRequest)
+	if handleErr != nil {
+		fmt.Println(handleErr)
+	}
+
+	fmt.Println("0")
+
+	ctx := context.Background()
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     "redis:6379",
+		Password: "",
+		DB:       0,
+	})
+	fmt.Println("1")
+	redisErr := addToRedis(movieItems, rdb, ctx)
+	if redisErr != nil {
+		panic(redisErr)
+	}
+	fmt.Println(getRandomKeysFromRedis(5, rdb, ctx))
 }
