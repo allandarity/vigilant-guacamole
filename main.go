@@ -6,11 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 	"io"
 	"net/http"
 	"os"
-
-	"github.com/redis/go-redis/v9"
+	"strconv"
 )
 
 type mediaBrowser struct {
@@ -37,14 +37,6 @@ type authenticationResponseUser struct {
 	Id   string `json:"Id"`
 }
 
-type getItems struct {
-	userId                 string
-	parentId               string
-	minCommunityRating     int
-	enableTotalRecordCount bool
-	limit                  int
-}
-
 type Items struct {
 	ItemElements []ItemsElement `json:"Items"`
 }
@@ -55,6 +47,25 @@ type ItemsElement struct {
 	Type            string  `json:"Type"`
 	ProductionYear  int16   `json:"ProductionYear"`
 	CommunityRating float32 `json:"CommunityRating"`
+}
+
+type redisClient struct {
+	ctx context.Context
+	rdb *redis.Client
+}
+
+func newRedisClient() redisClient {
+	ctx := context.Background()
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     "redis:6379",
+		Password: "",
+		DB:       0,
+	})
+
+	return redisClient{
+		ctx: ctx,
+		rdb: rdb,
+	}
 }
 
 func (ie ItemsElement) isEmpty() bool {
@@ -205,8 +216,8 @@ func getMoviesParentId(items Items) (string, error) {
 	return collection.Id, nil
 }
 
-func addToRedis(items Items, rdb *redis.Client, ctx context.Context) error {
-	pipe := rdb.Pipeline()
+func addToRedis(items Items, redisClient redisClient) error {
+	pipe := redisClient.rdb.Pipeline()
 	for _, i := range items.ItemElements {
 		key := fmt.Sprintf("movie:%s", i.Id)
 		structBytes, err := json.Marshal(i)
@@ -214,9 +225,9 @@ func addToRedis(items Items, rdb *redis.Client, ctx context.Context) error {
 			fmt.Println(err)
 			continue
 		}
-		pipe.Set(ctx, key, structBytes, 0)
+		pipe.Set(redisClient.ctx, key, structBytes, 0)
 	}
-	_, err := pipe.Exec(ctx)
+	_, err := pipe.Exec(redisClient.ctx)
 	if err != nil {
 		return err
 	}
@@ -258,6 +269,62 @@ func getItemFromRedis(key string, rdb *redis.Client, ctx context.Context) (Items
 	return itemElement, nil
 }
 
+func getItemImage(itemId string, mediaBrowser mediaBrowser) ([]byte, error) {
+	getImageUrl := fmt.Sprintf("%s/Items/%s/Images/Primary?MaxWidth=400&MaxHeight=400", mediaBrowser.host, itemId)
+	req, err := makeGetRequest(getImageUrl, mediaBrowser)
+	if err != nil {
+		fmt.Println(err)
+		return []byte(""), err
+	}
+	resp, err := makeHttpClientRequest(req)
+	if err != nil {
+		fmt.Println(err)
+		return []byte(""), err
+	}
+	return resp, nil
+}
+
+func handleIncomingGetRequest(redisClient redisClient, w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	items, err := getRandomKeysFromRedis(3, redisClient.rdb, redisClient.ctx)
+	if err != nil {
+		fmt.Println(err)
+	}
+	jsonBody, err := json.Marshal(items)
+	if err != nil {
+		fmt.Println(err)
+	}
+	w.Write(jsonBody)
+}
+
+func handleIncomingRequestForImage(mediaBrowser mediaBrowser, w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/jpeg")
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+	}
+	imageData, err := getItemImage(id, mediaBrowser)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+	w.Header().Set("Content-Length", strconv.Itoa(len(imageData)))
+	_, imageWriteErr := w.Write(imageData)
+	if imageWriteErr != nil {
+		http.Error(w, imageWriteErr.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func CorsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 func main() {
 	mediaBrowser, err := buildMediaBrowser()
 	if err != nil {
@@ -275,9 +342,6 @@ func main() {
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Println(authResponse.User.Id)
-	fmt.Println(authResponse.User.Name)
-	fmt.Println(authResponse.Token)
 
 	getMovieParentIdRequestUrl := fmt.Sprintf("%s/Users/%s/Items", mediaBrowser.host, authResponse.User.Id)
 	parentFolderRequest, err := makeGetRequest(getMovieParentIdRequestUrl, mediaBrowser)
@@ -304,18 +368,25 @@ func main() {
 		fmt.Println(handleErr)
 	}
 
-	fmt.Println("0")
-
-	ctx := context.Background()
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     "redis:6379",
-		Password: "",
-		DB:       0,
-	})
-	fmt.Println("1")
-	redisErr := addToRedis(movieItems, rdb, ctx)
+	redisClient := newRedisClient()
+	redisErr := addToRedis(movieItems, redisClient)
 	if redisErr != nil {
 		panic(redisErr)
 	}
-	fmt.Println(getRandomKeysFromRedis(5, rdb, ctx))
+	fmt.Println(getRandomKeysFromRedis(5, redisClient.rdb, redisClient.ctx))
+
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		handleIncomingGetRequest(redisClient, w, r)
+	})
+	mux.HandleFunc("/image", func(w http.ResponseWriter, r *http.Request) {
+		handleIncomingRequestForImage(mediaBrowser, w, r)
+	})
+
+	fmt.Println("HTTP connection started on port 8080")
+	httpServeError := http.ListenAndServe(":8080", CorsMiddleware(mux))
+	if httpServeError != nil {
+		panic(httpServeError)
+	}
 }
