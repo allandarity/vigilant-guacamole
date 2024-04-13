@@ -6,11 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/redis/go-redis/v9"
+	jellyfinHttpClient "go-jellyfin-api/pkg/http"
+	"go-jellyfin-api/pkg/jellyfin"
 	"io"
 	"net/http"
 	"os"
 	"strconv"
+
+	"github.com/redis/go-redis/v9"
 )
 
 type mediaBrowser struct {
@@ -389,4 +392,30 @@ func main() {
 	if httpServeError != nil {
 		panic(httpServeError)
 	}
+}
+
+func newMain() {
+
+	jellyfin, err := jellyfin.NewClient()
+	if err != nil {
+		panic(err)
+	}
+
+	authResponse, authenticationErr := jellyfin.AuthenticateByName()
+
+	if authenticationErr != nil {
+		fmt.Println("Failed to authenticate")
+	}
+
+	jellyfinHttpClient, err := jellyfinHttpClient.NewClient(jellyfin, authResponse)
+
+	if err != nil {
+		panic(err)
+	}
+
+	parentId, err := jellyfinHttpClient.GetMovieFolderParentId()
+	if err != nil {
+		fmt.Println(err)
+	}
+
 }
