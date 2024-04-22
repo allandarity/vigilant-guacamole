@@ -413,9 +413,9 @@ func newMain() {
 		panic(err)
 	}
 
-	parentId, err := jellyfinHttpClient.GetMovieFolderParentId()
-	if err != nil {
-		fmt.Println(err)
+	_, movieParentFolderErr := jellyfinHttpClient.GetMovieFolderParentId()
+	if movieParentFolderErr != nil {
+		fmt.Println(movieParentFolderErr)
 	}
 
 }

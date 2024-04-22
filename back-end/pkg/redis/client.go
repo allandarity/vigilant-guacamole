@@ -10,7 +10,7 @@ import (
 )
 
 type Client interface {
-	AddItem(items model.Items) error
+	AddItems(items model.Items) error
 	GetItem(key string) (model.ItemsElement, error)
 	GetRandomNumberOfItems(noOfItems int) ([]model.ItemsElement, error)
 }
@@ -33,7 +33,7 @@ func NewClient() RedisClient {
 	}
 }
 
-func (r RedisClient) AddItem(items model.Items) error {
+func (r RedisClient) AddItems(items model.Items) error {
 	pipe := r.rdb.Pipeline()
 	for _, i := range items.ItemElements {
 		key := fmt.Sprintf("movie:%s", i.Id)
