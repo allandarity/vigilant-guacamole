@@ -21,6 +21,8 @@ services:
       - 5173:5173
     volumes:
       - /app/node_modules
+    depends_on:
+       - redis
 
 volumes:
   node_modules:

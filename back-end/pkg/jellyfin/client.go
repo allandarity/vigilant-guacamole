@@ -69,7 +69,15 @@ func (j jellyfin) AuthenticateByName() (model.AuthResponse, error) {
 	req.Header.Set("Authorization", j.BuildMediaBrowserIdentifier())
 	req.Header.Set("content-type", "application/json")
 
-	return model.AuthResponse{}, nil
+	//TODO we dont actually even authenticate at any point
+
+	return model.AuthResponse{
+		User: model.AuthUser{
+			Name: "",
+			Id:   "",
+		},
+		Token: "",
+	}, nil
 }
 
 func (j jellyfin) GetHost() string {
@@ -77,11 +85,11 @@ func (j jellyfin) GetHost() string {
 }
 
 func buildAuthenticationRequest() (model.AuthRequest, error) {
-	username, err := getUsername()
+	username, err := getAuthCred("USERNAME")
 	if err != nil {
 		return model.AuthRequest{}, err
 	}
-	password, err := getPassword()
+	password, err := getAuthCred("PASSWORD")
 	if err != nil {
 		return model.AuthRequest{}, err
 	}
@@ -91,18 +99,10 @@ func buildAuthenticationRequest() (model.AuthRequest, error) {
 	}, nil
 }
 
-func getUsername() (string, error) {
-	username := os.Getenv("USERNAME")
-	if username == "" {
-		return "", errors.New("USERNAME is not set")
+func getAuthCred(credType string) (string, error) {
+	cred := os.Getenv(credType)
+	if cred == "" {
+		return "", errors.New(credType + " is not set")
 	}
-	return username, nil
-}
-
-func getPassword() (string, error) {
-	password := os.Getenv("PASSWORD")
-	if password == "" {
-		return "", errors.New("PASSWORD is not set")
-	}
-	return password, nil
+	return cred, nil
 }

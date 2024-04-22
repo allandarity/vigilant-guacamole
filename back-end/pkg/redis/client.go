@@ -20,8 +20,8 @@ type RedisClient struct {
 	ctx context.Context
 }
 
-func NewClient() RedisClient {
-	ctx := context.Background()
+func NewClient(context context.Context) RedisClient {
+	ctx := context
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     "redis:6739",
 		Password: "",
