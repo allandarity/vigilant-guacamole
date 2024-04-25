@@ -1,18 +1,15 @@
 package jellyfin
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"go-jellyfin-api/pkg/model"
-	"net/http"
 	"os"
 )
 
 type Client interface {
 	BuildMediaBrowserIdentifier() string
-	AuthenticateByName() (model.AuthResponse, error)
+	BuildAuthenticationRequest() (model.AuthRequest, error)
 	GetHost() string
 }
 
@@ -52,39 +49,11 @@ func (j jellyfin) BuildMediaBrowserIdentifier() string {
 	return fmt.Sprintf("MediaBrowser client=\"%s\", Device=\"%s\", DeviceId=\"%s\", Version=\"%s\", Token=\"%s\"", j.client, j.device, j.deviceId, j.version, j.token)
 }
 
-func (j jellyfin) AuthenticateByName() (model.AuthResponse, error) {
-	authenticationRequest, err := buildAuthenticationRequest()
-	if err != nil {
-		return model.AuthResponse{}, err
-	}
-	requestBody, err := json.Marshal(authenticationRequest)
-	if err != nil {
-		return model.AuthResponse{}, err
-	}
-	req, err := http.NewRequest("POST", j.host+"/Users/AuthenticateByName", bytes.NewBuffer(requestBody))
-	if err != nil {
-		return model.AuthResponse{}, err
-	}
-
-	req.Header.Set("Authorization", j.BuildMediaBrowserIdentifier())
-	req.Header.Set("content-type", "application/json")
-
-	//TODO we dont actually even authenticate at any point
-
-	return model.AuthResponse{
-		User: model.AuthUser{
-			Name: "",
-			Id:   "",
-		},
-		Token: "",
-	}, nil
-}
-
 func (j jellyfin) GetHost() string {
 	return j.host
 }
 
-func buildAuthenticationRequest() (model.AuthRequest, error) {
+func (j jellyfin) BuildAuthenticationRequest() (model.AuthRequest, error) {
 	username, err := getAuthCred("USERNAME")
 	if err != nil {
 		return model.AuthRequest{}, err
@@ -95,7 +64,7 @@ func buildAuthenticationRequest() (model.AuthRequest, error) {
 	}
 	return model.AuthRequest{
 		Username: username,
-		Password: password,
+		Pw:       password,
 	}, nil
 }
 

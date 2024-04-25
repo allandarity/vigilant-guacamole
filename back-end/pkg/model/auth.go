@@ -1,7 +1,7 @@
 package model
 
 type AuthResponse struct {
-	User  AuthUser `json:"json:User"`
+	User  AuthUser `json:"User"`
 	Token string   `json:"AccessToken"`
 }
 
@@ -12,5 +12,5 @@ type AuthUser struct {
 
 type AuthRequest struct {
 	Username string `json:"Username"`
-	Password string `json:"Pw"`
+	Pw       string `json:"Pw"`
 }
