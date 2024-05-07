@@ -35,7 +35,6 @@ func main() {
 		fmt.Println(allMoviesErr)
 		panic(allMoviesErr)
 	}
-	fmt.Println(allMovies)
 	addMoviesErr := rClient.AddItems(allMovies)
 
 	if addMoviesErr != nil {
