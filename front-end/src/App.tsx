@@ -6,7 +6,7 @@ function App() {
     <>
       <div className="App">
         <div className='button-container'>
-          <Link to="/path1" className="btn">
+          <Link to="/all" className="btn">
             Path 1
           </Link>
           <Link to="/path2" className="btn">
