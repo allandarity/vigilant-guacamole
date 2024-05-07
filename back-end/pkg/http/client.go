@@ -70,7 +70,6 @@ func (h jellyfinHttpClient) GetMovieFolderParentId() (string, error) {
 		fmt.Println("Failed to make request to " + h.getMovieParentIdRequestUrl())
 		return "", err
 	}
-	fmt.Println("###")
 	httpResponse, err := h.MakeHttpClientRequest(httpRequest)
 	if err != nil {
 		fmt.Println("Failed to make http client request")

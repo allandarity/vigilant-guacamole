@@ -26,3 +26,6 @@ main
 
 .idea/
 *.iml
+
+node_modules
+back-end/resources/watchlist.csv

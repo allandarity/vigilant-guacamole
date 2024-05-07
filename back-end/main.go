@@ -5,6 +5,7 @@ import (
 	"fmt"
 	jellyfinHttpClient "go-jellyfin-api/pkg/http"
 	"go-jellyfin-api/pkg/jellyfin"
+	"go-jellyfin-api/pkg/letterboxd"
 	redisClient "go-jellyfin-api/pkg/redis"
 	"net/http"
 )
@@ -35,13 +36,19 @@ func main() {
 		fmt.Println(allMoviesErr)
 		panic(allMoviesErr)
 	}
-	fmt.Println(allMovies)
 	addMoviesErr := rClient.AddItems(allMovies)
 
 	if addMoviesErr != nil {
 		fmt.Println(addMoviesErr)
 	}
 
+	lService, _ := letterboxd.NewService(rClient)
+	_, csvErr := lService.ReadCSVFile()
+	if csvErr != nil {
+		fmt.Println(csvErr)
+	}
+
+	rClient.GetItemsByKeyword("Batman")
 	httpErr := createHttpMux(jClient, rClient, hClient)
 	if httpErr != nil {
 		panic(httpErr)

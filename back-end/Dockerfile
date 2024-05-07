@@ -6,6 +6,7 @@ WORKDIR /app
 
 # Copy the .env file
 COPY .env /app/.env
+COPY ./resources/watchlist.csv /app/resources/watchlist.csv
 
 # Load environment variables from the .env file
 ENV $(cat /app/.env | xargs)
