@@ -2,7 +2,6 @@ package letterboxd
 
 import (
 	"encoding/csv"
-	"fmt"
 	"go-jellyfin-api/pkg/model"
 	redisClient "go-jellyfin-api/pkg/redis"
 	"os"
@@ -10,9 +9,7 @@ import (
 )
 
 type Service interface {
-	PopulateHttpClient()
-	RunTest() string
-	ReadCSVFile() (model.Items, error)
+	GetItemsFromWatchlistCSV() (model.Items, error)
 }
 
 type letterboxdService struct {
@@ -21,7 +18,7 @@ type letterboxdService struct {
 	watchlistCSVPath string
 }
 
-func (l *letterboxdService) ReadCSVFile() (model.Items, error) {
+func (l *letterboxdService) GetItemsFromWatchlistCSV() (model.Items, error) {
 	file, err := os.Open(l.watchlistCSVPath)
 	if err != nil {
 		return model.Items{}, err
@@ -44,9 +41,10 @@ func (l *letterboxdService) ReadCSVFile() (model.Items, error) {
 	var items model.Items
 
 	for _, record := range records {
+		name := l.rClient.NormaliseTitle(record[1])
 		year, _ := strconv.Atoi(record[2])
 		item := model.ItemsElement{
-			Name:           record[1],
+			Name:           name,
 			ProductionYear: int16(year),
 		}
 
@@ -54,17 +52,6 @@ func (l *letterboxdService) ReadCSVFile() (model.Items, error) {
 	}
 
 	return items, nil
-}
-
-func (l *letterboxdService) PopulateHttpClient() {
-	service, _ := NewClient()
-	fmt.Println(service.TestClient("OUTPUT"))
-	l.lHttpClient = service
-}
-
-func (l letterboxdService) RunTest() string {
-	fmt.Println("Running Test")
-	return l.lHttpClient.TestClient("YES")
 }
 
 func NewService(rClient redisClient.Client, watchlistCSVPath string) (Service, error) {

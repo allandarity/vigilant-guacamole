@@ -1,7 +1,9 @@
 package letterboxd
 
 import (
+	"context"
 	"go-jellyfin-api/pkg/model"
+	"go-jellyfin-api/pkg/redis"
 	"os"
 	"reflect"
 	"testing"
@@ -31,12 +33,14 @@ func TestReadCSVFile(t *testing.T) {
 	if err := tempFile.Close(); err != nil {
 		t.Fatalf("Failed to close temporary file: %v", err)
 	}
+	ctx := context.Background()
 
 	service := &letterboxdService{
 		watchlistCSVPath: tempFile.Name(),
+		rClient:          redis.NewClient(ctx),
 	}
 
-	result, err := service.ReadCSVFile()
+	result, err := service.GetItemsFromWatchlistCSV()
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -52,9 +56,9 @@ func TestReadCSVFile(t *testing.T) {
 	}
 
 	expectedItems := []model.ItemsElement{
-		{Name: "Lady Bird", ProductionYear: 2017},
-		{Name: "Columbus", ProductionYear: 2017},
-		{Name: "Let the Corpses Tan", ProductionYear: 2017},
+		{Name: "lady_bird", ProductionYear: 2017},
+		{Name: "columbus", ProductionYear: 2017},
+		{Name: "let_the_corpses_tan", ProductionYear: 2017},
 	}
 
 	if len(result.ItemElements) != len(expectedItems) {

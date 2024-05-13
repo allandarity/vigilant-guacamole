@@ -15,8 +15,9 @@ type Client interface {
 	AddItems(items *model.Items) error
 	GetItem(key string) (model.ItemsElement, error)
 	GetRandomNumberOfItems(noOfItems int) ([]model.ItemsElement, error)
-	GetItemsByKeyword(keyWord string) []model.ItemsElement
-	normaliseTitle(title string) string
+	GetItemsByKeyword(keyWord string) ([]model.ItemsElement, error)
+	NormaliseTitle(title string) string
+	getItemsByKeys(keys []string) ([]model.ItemsElement, error)
 }
 
 type RedisClient struct {
@@ -40,7 +41,7 @@ func NewClient(context context.Context) RedisClient {
 func (r RedisClient) AddItems(items *model.Items) error {
 	pipe := r.rdb.Pipeline()
 	for _, i := range items.ItemElements {
-		title := r.normaliseTitle(i.Name)
+		title := r.NormaliseTitle(i.Name)
 		key := fmt.Sprintf("movie:%s:%s", title, i.Id)
 		structBytes, err := json.Marshal(i)
 		if err != nil {
@@ -89,14 +90,45 @@ func (r RedisClient) GetRandomNumberOfItems(noOfItems int) ([]model.ItemsElement
 	return items, nil
 }
 
-func (r RedisClient) GetItemsByKeyword(keyWord string) []model.ItemsElement {
-	iter := r.rdb.Scan(r.ctx, 0, "movies:"+keyWord, 0).Iterator()
-	for iter.Next(r.ctx) {
+func (r RedisClient) GetItemsByKeyword(keyWord string) ([]model.ItemsElement, error) {
+	fmt.Println("GET KEYWORD FOR " + keyWord)
+	keys, err := r.rdb.Keys(r.ctx, "*"+keyWord+"*").Result()
+
+	fmt.Printf("Number of keys for keyword %s found %d\n", keyWord, len(keys))
+	if err != nil {
+		fmt.Println(err)
 	}
-	return nil
+	return r.getItemsByKeys(keys)
 }
 
-func (r RedisClient) normaliseTitle(title string) string {
+func (r RedisClient) getItemsByKeys(keys []string) ([]model.ItemsElement, error) {
+	pipe := r.rdb.Pipeline()
+	for _, key := range keys {
+		pipe.Get(r.ctx, key)
+	}
+	results, err := pipe.Exec(r.ctx)
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+
+	var item model.ItemsElement
+	var items []model.ItemsElement
+	for _, result := range results {
+		val, _ := result.(*redis.StringCmd).Result()
+		jsonErr := json.Unmarshal([]byte(val), &item)
+		if jsonErr != nil {
+			fmt.Println("failed to unmarshal " + val)
+			continue
+		}
+		items = append(items, item)
+	}
+
+	fmt.Printf("Number of items found for number of keys %d %d\n", len(keys), len(items))
+	return items, nil
+}
+
+func (r RedisClient) NormaliseTitle(title string) string {
 	regex := regexp.MustCompile(`[^a-zA-Z0-9\s\-.,!?]`)
 	title = regex.ReplaceAllString(title, "")
 	title = strings.ReplaceAll(title, "'", "")

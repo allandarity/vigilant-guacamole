@@ -49,19 +49,12 @@ func main() {
 	}
 	lService, _ := letterboxd.NewService(rClient, csvPath)
 
-	output, csvErr := lService.ReadCSVFile()
-	if csvErr != nil {
-		fmt.Println(csvErr)
+	items, err := rClient.GetItemsByKeyword("batman")
+	if err != nil {
+		fmt.Println("FAILED TO FIND BATMAN")
 	}
-
-	if output.IsEmpty() {
-		fmt.Println("FAILED TO GET ANY")
-	}
-
-	fmt.Println(output)
-
-	rClient.GetItemsByKeyword("Batman")
-	httpErr := createHttpMux(jClient, rClient, hClient)
+	fmt.Println(items)
+	httpErr := createHttpMux(jClient, rClient, hClient, lService)
 	if httpErr != nil {
 		panic(httpErr)
 	}
@@ -84,9 +77,9 @@ func createJellyfinHttpClient(jClient jellyfin.Client) (jellyfinHttpClient.Clien
 	return jHttpClient, nil
 }
 
-func createHttpMux(jClient jellyfin.Client, rClient redisClient.Client, hClient jellyfinHttpClient.Client) error {
+func createHttpMux(jClient jellyfin.Client, rClient redisClient.Client, hClient jellyfinHttpClient.Client, lService letterboxd.Service) error {
 
-	rc := jellyfinHttpClient.NewController(jClient, rClient, hClient)
+	rc := jellyfinHttpClient.NewController(jClient, rClient, hClient, lService)
 	rc.DefineRoutes(rc.GetMux())
 
 	httpServeError := http.ListenAndServe(":8080", rc.DefineMiddleware(rc.GetMux()))

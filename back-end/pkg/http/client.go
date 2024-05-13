@@ -42,9 +42,6 @@ func (h *jellyfinHttpClient) AuthenticateByName() error {
 		return err
 	}
 
-	fmt.Println(h.jellyfin.GetHost())
-	fmt.Println(h.jellyfin.BuildMediaBrowserIdentifier())
-
 	req, err := http.NewRequest("POST", h.jellyfin.GetHost()+"/Users/AuthenticateByName", bytes.NewBuffer(requestBody))
 	req.Header.Set("Authorization", h.jellyfin.BuildMediaBrowserIdentifier())
 	req.Header.Set("content-type", "application/json")
@@ -58,7 +55,6 @@ func (h *jellyfinHttpClient) AuthenticateByName() error {
 		return err
 	}
 
-	fmt.Println(string(resp))
 	if err := json.Unmarshal(resp, &h.authResponse); err != nil {
 		fmt.Println("can't unmarshal")
 		return err
