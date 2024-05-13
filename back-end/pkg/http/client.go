@@ -15,7 +15,7 @@ type Client interface {
 	GetMovieFolderParentId() (string, error)
 	GetRequest(url string) (*http.Request, error)
 	MakeHttpClientRequest(request *http.Request) ([]byte, error)
-	GetAllMoviesRequest(parentId string) (model.Items, error)
+	GetAllMoviesRequest(parentId string) (*model.Items, error)
 	AuthenticateByName() error
 }
 
@@ -129,21 +129,21 @@ func (h jellyfinHttpClient) getMovieParentIdRequestUrl() string {
 	return fmt.Sprintf("%s/Users/%s/Items", h.jellyfin.GetHost(), h.authResponse.User.Id)
 }
 
-func (h jellyfinHttpClient) GetAllMoviesRequest(parentId string) (model.Items, error) {
+func (h jellyfinHttpClient) GetAllMoviesRequest(parentId string) (*model.Items, error) {
 	url := fmt.Sprintf("%s/Users/%s/Items?ParentId=%s", h.jellyfin.GetHost(), h.authResponse.User.Id, parentId)
 	req, err := h.GetRequest(url)
 	if err != nil {
-		return model.Items{}, err
+		return nil, err
 	}
 	resp, err := h.MakeHttpClientRequest(req)
 	if err != nil {
-		return model.Items{}, err
+		return nil, err
 	}
 
-	var items model.Items
+	var items *model.Items
 	if err := json.Unmarshal(resp, &items); err != nil {
 		fmt.Println("failed to unmarshal")
-		return model.Items{}, err
+		return nil, err
 	}
 	return items, nil
 }

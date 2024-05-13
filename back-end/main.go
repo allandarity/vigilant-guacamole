@@ -8,6 +8,7 @@ import (
 	"go-jellyfin-api/pkg/letterboxd"
 	redisClient "go-jellyfin-api/pkg/redis"
 	"net/http"
+	"os"
 )
 
 func main() {
@@ -42,11 +43,22 @@ func main() {
 		fmt.Println(addMoviesErr)
 	}
 
-	lService, _ := letterboxd.NewService(rClient)
-	_, csvErr := lService.ReadCSVFile()
+	csvPath := os.Getenv("WATCHLIST_CSV_PATH")
+	if csvPath == "" {
+		panic("WATCHLIST_CSV_PATH not set")
+	}
+	lService, _ := letterboxd.NewService(rClient, csvPath)
+
+	output, csvErr := lService.ReadCSVFile()
 	if csvErr != nil {
 		fmt.Println(csvErr)
 	}
+
+	if output.IsEmpty() {
+		fmt.Println("FAILED TO GET ANY")
+	}
+
+	fmt.Println(output)
 
 	rClient.GetItemsByKeyword("Batman")
 	httpErr := createHttpMux(jClient, rClient, hClient)

@@ -5,15 +5,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"go-jellyfin-api/pkg/model"
+	"regexp"
+	"strings"
 
 	"github.com/redis/go-redis/v9"
 )
 
 type Client interface {
-	AddItems(items model.Items) error
+	AddItems(items *model.Items) error
 	GetItem(key string) (model.ItemsElement, error)
 	GetRandomNumberOfItems(noOfItems int) ([]model.ItemsElement, error)
 	GetItemsByKeyword(keyWord string) []model.ItemsElement
+	normaliseTitle(title string) string
 }
 
 type RedisClient struct {
@@ -34,10 +37,11 @@ func NewClient(context context.Context) RedisClient {
 	}
 }
 
-func (r RedisClient) AddItems(items model.Items) error {
+func (r RedisClient) AddItems(items *model.Items) error {
 	pipe := r.rdb.Pipeline()
 	for _, i := range items.ItemElements {
-		key := fmt.Sprintf("movie:%s:%s", i.Name, i.Id)
+		title := r.normaliseTitle(i.Name)
+		key := fmt.Sprintf("movie:%s:%s", title, i.Id)
 		structBytes, err := json.Marshal(i)
 		if err != nil {
 			fmt.Println(err)
@@ -86,8 +90,18 @@ func (r RedisClient) GetRandomNumberOfItems(noOfItems int) ([]model.ItemsElement
 }
 
 func (r RedisClient) GetItemsByKeyword(keyWord string) []model.ItemsElement {
-	iter := r.rdb.Scan(r.ctx, 0, "prefix:*"+keyWord, 0).Iterator()
+	iter := r.rdb.Scan(r.ctx, 0, "movies:"+keyWord, 0).Iterator()
 	for iter.Next(r.ctx) {
 	}
 	return nil
+}
+
+func (r RedisClient) normaliseTitle(title string) string {
+	regex := regexp.MustCompile(`[^a-zA-Z0-9\s\-.,!?]`)
+	title = regex.ReplaceAllString(title, "")
+	title = strings.ReplaceAll(title, "'", "")
+	title = strings.ReplaceAll(title, ".", "_")
+	title = strings.ToLower(title)
+	title = strings.ReplaceAll(title, " ", "_")
+	return title
 }
