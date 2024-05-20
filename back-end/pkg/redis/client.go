@@ -3,21 +3,18 @@ package redis
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"go-jellyfin-api/pkg/model"
-	"regexp"
-	"strings"
-
 	"github.com/redis/go-redis/v9"
+	"go-jellyfin-api/pkg/model"
 )
 
 type Client interface {
 	AddItems(items *model.Items) error
 	GetItem(key string) (model.ItemsElement, error)
 	GetRandomNumberOfItems(noOfItems int) ([]model.ItemsElement, error)
-	GetItemsByKeyword(keyWord string) ([]model.ItemsElement, error)
-	NormaliseTitle(title string) string
-	getItemsByKeys(keys []string) ([]model.ItemsElement, error)
+	GetItemsByKeys(keys []string) ([]model.ItemsElement, error)
+	FindKeyByPartialTitle(title string) ([]model.ItemsElement, error)
 }
 
 type RedisClient struct {
@@ -41,7 +38,7 @@ func NewClient(context context.Context) RedisClient {
 func (r RedisClient) AddItems(items *model.Items) error {
 	pipe := r.rdb.Pipeline()
 	for _, i := range items.ItemElements {
-		title := r.NormaliseTitle(i.Name)
+		title := i.NormaliseTitle()
 		key := fmt.Sprintf("movie:%s:%s", title, i.Id)
 		structBytes, err := json.Marshal(i)
 		if err != nil {
@@ -73,6 +70,27 @@ func (r RedisClient) GetItem(key string) (model.ItemsElement, error) {
 
 }
 
+func (r RedisClient) FindKeyByPartialTitle(title string) ([]model.ItemsElement, error) {
+
+	keys, err := r.rdb.Keys(r.ctx, "movie:*"+title+"*").Result()
+	if err != nil {
+		fmt.Println("Failed to find keys for partial title " + title)
+		return nil, err
+	}
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	var items []model.ItemsElement
+	for _, key := range keys {
+		unmarshalledItem, err := r.GetItem(key)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, unmarshalledItem)
+	}
+	return items, nil
+}
+
 func (r RedisClient) GetRandomNumberOfItems(noOfItems int) ([]model.ItemsElement, error) {
 	var items []model.ItemsElement
 	for i := 0; i < noOfItems; i++ {
@@ -87,53 +105,54 @@ func (r RedisClient) GetRandomNumberOfItems(noOfItems int) ([]model.ItemsElement
 		}
 		items = append(items, unmarshalledItem)
 	}
+
 	return items, nil
 }
 
-func (r RedisClient) GetItemsByKeyword(keyWord string) ([]model.ItemsElement, error) {
-	fmt.Println("GET KEYWORD FOR " + keyWord)
-	keys, err := r.rdb.Keys(r.ctx, "*"+keyWord+"*").Result()
-
-	fmt.Printf("Number of keys for keyword %s found %d\n", keyWord, len(keys))
-	if err != nil {
-		fmt.Println(err)
-	}
-	return r.getItemsByKeys(keys)
-}
-
-func (r RedisClient) getItemsByKeys(keys []string) ([]model.ItemsElement, error) {
-	pipe := r.rdb.Pipeline()
-	for _, key := range keys {
-		pipe.Get(r.ctx, key)
-	}
-	results, err := pipe.Exec(r.ctx)
-	if err != nil {
-		fmt.Println(err)
-		return nil, err
-	}
-
-	var item model.ItemsElement
+// GetItemsByKeys TODO this is ai generated, write tests and stuff
+func (r RedisClient) GetItemsByKeys(keys []string) ([]model.ItemsElement, error) {
+	var cursor uint64
+	var n int
+	var err error
+	var element model.ItemsElement
 	var items []model.ItemsElement
-	for _, result := range results {
-		val, _ := result.(*redis.StringCmd).Result()
-		jsonErr := json.Unmarshal([]byte(val), &item)
-		if jsonErr != nil {
-			fmt.Println("failed to unmarshal " + val)
-			continue
+
+	pipe := r.rdb.Pipeline()
+
+	for _, pattern := range keys {
+		for {
+			fmt.Println("searching for key " + pattern)
+			var keys []string
+
+			keys, cursor, err = r.rdb.Scan(context.Background(), cursor, pattern, 10).Result()
+
+			if err != nil {
+				return nil, err
+			}
+
+			for _, key := range keys {
+				pipe.Get(context.Background(), key)
+				n++
+			}
+
+			if n > 0 {
+				results, err := pipe.Exec(context.Background())
+				if err != nil && !errors.Is(err, redis.Nil) {
+					return nil, err
+				}
+
+				for _, result := range results {
+					val, _ := result.(*redis.StringCmd).Result()
+					if err := json.Unmarshal([]byte(val), &element); err == nil {
+						items = append(items, element)
+					}
+				}
+			}
+
+			if cursor == 0 {
+				break
+			}
 		}
-		items = append(items, item)
 	}
-
-	fmt.Printf("Number of items found for number of keys %d %d\n", len(keys), len(items))
 	return items, nil
-}
-
-func (r RedisClient) NormaliseTitle(title string) string {
-	regex := regexp.MustCompile(`[^a-zA-Z0-9\s\-.,!?]`)
-	title = regex.ReplaceAllString(title, "")
-	title = strings.ReplaceAll(title, "'", "")
-	title = strings.ReplaceAll(title, ".", "_")
-	title = strings.ToLower(title)
-	title = strings.ReplaceAll(title, " ", "_")
-	return title
 }

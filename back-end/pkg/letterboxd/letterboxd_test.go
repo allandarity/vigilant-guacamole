@@ -73,6 +73,56 @@ func TestReadCSVFile(t *testing.T) {
 	}
 }
 
+func TestLetterboxdService_GetRandomNumberOfItemsFromWatchlist(t *testing.T) {
+	tempFile, err := os.CreateTemp("", "test.csv")
+	if err != nil {
+		t.Fatalf("Failed to create temporary file: %v", err)
+	}
+	defer os.Remove(tempFile.Name())
+
+	t.Logf("Temporary file path: %s", tempFile.Name())
+
+	if _, err := tempFile.Write(testData); err != nil {
+		t.Fatalf("Failed to write test data to temporary file: %v", err)
+	}
+
+	if err := tempFile.Close(); err != nil {
+		t.Fatalf("Failed to close temporary file: %v", err)
+	}
+	ctx := context.Background()
+
+	service := &letterboxdService{
+		watchlistCSVPath: tempFile.Name(),
+		rClient:          redis.NewClient(ctx),
+	}
+	result, err := service.GetItemsFromWatchlistCSV()
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+
+	if result.IsEmpty() {
+		t.Error("Resulting output is empty")
+	}
+
+	randomItems := service.GetRandomNumberOfItemsFromWatchlist(3)
+
+	if !isSliceUnique(randomItems) {
+		t.Error("Slice isn't unique")
+	}
+
+}
+
+func isSliceUnique(items []model.ItemsElement) bool {
+	seen := make(map[string]bool)
+	for _, item := range items {
+		if seen[item.Name] {
+			return false
+		}
+		seen[item.Name] = true
+	}
+	return true
+}
+
 /*
 package letterboxd
 

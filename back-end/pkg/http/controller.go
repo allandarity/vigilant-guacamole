@@ -100,15 +100,17 @@ func (c restController) getItemImage(itemId string) ([]byte, error) {
 
 func (c restController) handleIncomingWatchlistRequest(w http.ResponseWriter) {
 
-	items, err := c.lService.GetItemsFromWatchlistCSV()
+	output, err := c.lService.GetNumberOfKeysMatchingYear(3)
 
-	if err != nil {
-		fmt.Print(err)
-	}
-
-	jsonBody, err := json.Marshal(items)
 	if err != nil {
 		fmt.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	jsonBody, err := json.Marshal(output)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 	w.Write(jsonBody)
 }

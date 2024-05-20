@@ -1,5 +1,10 @@
 package model
 
+import (
+	"regexp"
+	"strings"
+)
+
 type Items struct {
 	ItemElements []ItemsElement `json:"Items"`
 }
@@ -29,6 +34,16 @@ func (ie ItemsElement) IsOfCorrectType(expectedType string) bool {
 
 func (ie ItemsElement) IsSameByYearAndName(matchingType ItemsElement) bool {
 	return ie.Name == matchingType.Name && ie.ProductionYear == matchingType.ProductionYear
+}
+
+func (ie ItemsElement) NormaliseTitle() string {
+	regex := regexp.MustCompile(`[^a-zA-Z0-9\s\-.,!?]`)
+	ie.Name = regex.ReplaceAllString(ie.Name, "")
+	ie.Name = strings.ReplaceAll(ie.Name, "'", "")
+	ie.Name = strings.ReplaceAll(ie.Name, ".", "_")
+	ie.Name = strings.ToLower(ie.Name)
+	ie.Name = strings.ReplaceAll(ie.Name, " ", "_")
+	return ie.Name
 }
 
 func (i Items) GetItemByName(name string) ItemsElement {

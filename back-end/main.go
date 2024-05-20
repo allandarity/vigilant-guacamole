@@ -48,12 +48,11 @@ func main() {
 		panic("WATCHLIST_CSV_PATH not set")
 	}
 	lService, _ := letterboxd.NewService(rClient, csvPath)
-
-	items, err := rClient.GetItemsByKeyword("batman")
-	if err != nil {
-		fmt.Println("FAILED TO FIND BATMAN")
+	_, getWatchlistError := lService.GetItemsFromWatchlistCSV()
+	if getWatchlistError != nil {
+		fmt.Println("failed to get watchlist")
 	}
-	fmt.Println(items)
+
 	httpErr := createHttpMux(jClient, rClient, hClient, lService)
 	if httpErr != nil {
 		panic(httpErr)
