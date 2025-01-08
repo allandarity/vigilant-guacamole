@@ -1,8 +1,10 @@
 export interface Show {
+  movieId: number
 	title: string
 	year: number
-	id: string
+	jellyfinId: string
 	rating: number
 	isSelected: boolean
+  imageData: Uint8Array
 	onSelect: () => void;
 }

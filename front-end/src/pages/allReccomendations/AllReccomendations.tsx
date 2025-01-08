@@ -13,9 +13,9 @@ function AllRecommendations() {
 
   useEffect(() => {
     if (!loadData) {
+      setLoadData(true)
       getRandomMovies().then(data => {
         setMovieData(data)
-        setLoadData(true)
       })
     }
   }, [loadData])
@@ -29,13 +29,15 @@ function AllRecommendations() {
       {movieData ? (
         <div className="movie-cards-container">
           {movieData.map((movie, index) => (
-            <div key={movie.id} className="movie-item">
+            <div key={movie.movieId} className="movie-item">
               <Poster show={{
                 title: movie.name,
-                id: movie.id,
+                movieId: movie.movieId,
+                jellyfinId: movie.jellyfinId,
                 year: movie.productionYear,
                 rating: movie.communityRating,
                 isSelected: index === selectedMovieIndex,
+                imageData: movie.imageData,
                 onSelect: () => handleMovieSelect(index),
               }} />
             </div>

@@ -1,15 +1,14 @@
 # Use an official Golang runtime as the base image
-FROM golang:1.21.7
+FROM golang:1.23.4
 
-COPY . /app
 WORKDIR /app
 
-# Copy the .env file
-COPY .env /app/.env
+COPY go.mod go.sum ./
 
-# Load environment variables from the .env file
-ENV $(cat /app/.env | xargs)
+RUN go mod download
 
-RUN go build -o main .
+COPY . .
+
+RUN go build -o main ./cmd
 
 CMD ["./main"]

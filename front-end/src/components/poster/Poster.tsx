@@ -1,7 +1,6 @@
 import {Show} from "../../model/Show.tsx";
 import "./Poster.css"
 import {useEffect, useState} from "react";
-import {getMoviePoster} from "../../api/MovieInfoApi.ts";
 
 interface PosterProps {
 	show: Show
@@ -11,11 +10,13 @@ function Poster({show}: PosterProps) {
 
 	const [posterImageData, setPosterImageData] = useState<string>();
 
-	useEffect(() => {
-		getMoviePoster(show.id).then(output => {
-			setPosterImageData(output)
-		})
-	}, [show.id])
+useEffect(() => {
+  if (show.movieId && show.imageData) {
+    const blob = new Blob([show.imageData], { type: 'image/jpeg' });
+    const url = URL.createObjectURL(blob);
+    setPosterImageData(url);
+  }
+}, [show]);
 
 
 	const handleClick = () => {
@@ -63,7 +64,7 @@ function Poster({show}: PosterProps) {
 			}
 			{show.isSelected && (
 				<div className="movie-card__description-box">
-					<p>mpv http://192.168.1.157:8096/Videos/{show.id}/stream.mkv</p>
+					<p>mpv http://192.168.1.157:8096/Videos/{show.jellyfinId}/stream.mkv</p>
 				</div>
 			)}
 		</>

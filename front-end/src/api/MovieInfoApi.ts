@@ -3,22 +3,19 @@ import {Movie} from "../model/Movies.ts";
 const BASE_URL = "http://localhost:8080"
 
 export async function getRandomMovies(): Promise<Movie[]> {
-	const response = await fetch(`${BASE_URL}/`)
+	const response = await fetch(`${BASE_URL}/movies/random`)
 	const data = await response.json()
 	return data.map(convertToMovie)
 }
 
-export async function getMoviePoster(id: string) {
-	const response = await fetch(`${BASE_URL}/image?id=${id}`)
-	const data =  await response.blob()
-	return URL.createObjectURL(data);
-}
-
 function convertToMovie(data: any): Movie {
+  const binaryImageData = Uint8Array.from(atob(data.MovieImage.ImageData), char => char.charCodeAt(0));
 	return {
-		productionYear: data.ProductionYear,
-		communityRating: data.CommunityRating,
-		name: data.Name,
-		id: data.Id
+    movieId: data.Movie.Id,
+		productionYear: data.Movie.ProductionYear,
+		communityRating: data.Movie.CommunityRating,
+		name: data.Movie.Name,
+		jellyfinId: data.Movie.JellyfinId,
+    imageData: binaryImageData
 	}
 }
