@@ -7,6 +7,7 @@ import (
 	jellyfinHttpClient "go-jellyfin-api/cmd/http"
 	"go-jellyfin-api/cmd/jellyfin"
 	"go-jellyfin-api/cmd/repository"
+	"go-jellyfin-api/cmd/service"
 	"log"
 	"net/http"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// TODO: clean this main func up
 func main() {
 	// TODO: is this timeout acceptable?
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -61,6 +63,15 @@ func main() {
 	if err := movieRepository.PopulateMovieDatabase(ctx, allMoviesImageUpdated); err != nil {
 		log.Fatal(err)
 	}
+
+	fmt.Println("reading csv file")
+	watchlistRepository := repository.NewWatchlistRepository(pool)
+	watchlistService := service.NewWatchlistService(watchlistRepository)
+	list, err := watchlistService.LoadWatchlistCSV()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(list)
 
 	fmt.Println("starting mux")
 	httpErr := createHttpMux(jellyfinClient, movieRepository, jellyfinHttpClient)
