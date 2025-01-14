@@ -33,7 +33,7 @@ func main() {
 
 	movieRepository := repository.NewMovieRepository(pool)
 
-	jellyfinClient, err := jellyfin.NewClient()
+	jellyfinService, err := service.NewJellyfinService()
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"go-jellyfin-api/cmd/model"
 	"go-jellyfin-api/cmd/repository"
+	"log"
 	"os"
+	"time"
 )
 
 const (
-	RESOURCE_LOCATION  = "../../resources/"
+	RESOURCE_LOCATION  = "/app/resources/"
 	WATCHLIST_FILENAME = "watchlist.csv"
 )
 
@@ -57,12 +59,28 @@ func mapToWatchlist(records [][]string) model.Watchlist {
 	var watchlist model.Watchlist
 	var watchlistItems []model.WatchlistItem
 	for _, record := range records {
+		if record[0] == "Date" {
+			// skip header
+			continue
+		}
 		var item model.WatchlistItem
-		item.DateAdded = record[0]
+		item.DateAdded = parseTime("2006-01-02", record[0])
 		item.Title = record[1]
-		item.DateReleased = record[2]
+		item.DateReleased = parseTime("2006", record[2])
 		watchlistItems = append(watchlistItems, item)
 	}
-	watchlist.Items = watchlistItems
+	watchlist.WatchlistItems = watchlistItems
 	return watchlist
+}
+
+func parseTime(layout string, timeString string) time.Time {
+	if timeString == "" {
+		return time.Time{}
+	}
+	parsedTime, err := time.Parse(layout, timeString)
+	if err != nil {
+		log.Fatal(err)
+		return time.Time{}
+	}
+	return parsedTime
 }

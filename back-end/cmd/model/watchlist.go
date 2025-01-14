@@ -1,11 +1,13 @@
 package model
 
+import "time"
+
 type Watchlist struct {
-	Items []WatchlistItem
+	WatchlistItems []WatchlistItem
 }
 
 type WatchlistItem struct {
 	Title        string
-	DateAdded    string
-	DateReleased string
+	DateAdded    time.Time
+	DateReleased time.Time
 }

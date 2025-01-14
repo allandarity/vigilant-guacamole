@@ -3,8 +3,8 @@ package http
 import (
 	"encoding/json"
 	"fmt"
-	"go-jellyfin-api/cmd/jellyfin"
 	"go-jellyfin-api/cmd/repository"
+	"go-jellyfin-api/cmd/service"
 	"net/http"
 	"strconv"
 )
@@ -17,13 +17,13 @@ type Controller interface {
 
 type restController struct {
 	mux             *http.ServeMux
-	jellyfinClient  jellyfin.Client
+	jellyfinService service.JellyfinService
 	movieRepository repository.MovieRepository
 	httpClient      Client
 }
 
 type Config struct {
-	JellyfinClient  jellyfin.Client
+	jellyfinService service.JellyfinService
 	MovieRepository repository.MovieRepository
 	HttpClient      Client
 }
@@ -31,7 +31,7 @@ type Config struct {
 func NewController(cfg Config) Controller {
 	c := &restController{
 		mux:             http.NewServeMux(),
-		jellyfinClient:  cfg.JellyfinClient,
+		jellyfinService: cfg.jellyfinService,
 		movieRepository: cfg.MovieRepository,
 		httpClient:      cfg.HttpClient,
 	}
@@ -85,10 +85,10 @@ func (c restController) handleIncomingRequestForImage() http.HandlerFunc {
 	}
 }
 
-// TODO delete
+// TODO delete from here add to service
 func (c restController) getItemImage(itemId string) ([]byte, error) {
 	getImageUrl := fmt.Sprintf("%s/Items/%s/Images/Primary?MaxWidth=%d&MaxHeight=%d",
-		c.jellyfinClient.GetHost(), itemId, ImageMaxWidth, ImageMaxHeight)
+		c.jellyfinService.GetHost(), itemId, ImageMaxWidth, ImageMaxHeight)
 	req, err := c.httpClient.GetRequest(getImageUrl)
 	if err != nil {
 		fmt.Errorf("Error creating request", "url", getImageUrl, "error", err)
@@ -105,6 +105,7 @@ func (c restController) getItemImage(itemId string) ([]byte, error) {
 func (c restController) GetRandomMovies(count int) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
+		// TODO: Shouldnt be calling the repository directly
 		movies, err := c.movieRepository.GetRandomMovies(ctx, count)
 		if err != nil {
 			fmt.Printf("Error getting random movies", "error", err)
