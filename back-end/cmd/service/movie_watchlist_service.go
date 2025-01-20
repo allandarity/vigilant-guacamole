@@ -9,6 +9,7 @@ import (
 
 type MovieWatchlistService interface {
 	PopulateDatabase(ctx context.Context) ([]model.MovieWatchlistPair, error)
+	GetRandomMovieWatchlist(ctx context.Context, noOfMovies int) ([]model.MovieWatchlistPair, error)
 }
 
 type movieWatchlistService struct {
@@ -53,6 +54,10 @@ func (mw *movieWatchlistService) PopulateDatabase(ctx context.Context) ([]model.
 		return nil, err
 	}
 	return pairs, nil
+}
+
+func (mw *movieWatchlistService) GetRandomMovieWatchlist(ctx context.Context, noOfMovies int) ([]model.MovieWatchlistPair, error) {
+	return nil, nil
 }
 
 func (mw *movieWatchlistService) matches(movie model.Movie, watchlist model.WatchlistItem) bool {

@@ -84,7 +84,7 @@ func main() {
 	fmt.Println(mwl)
 
 	fmt.Println("starting mux")
-	httpErr := createHttpMux(jellyfinService, jellyfinConfiguration, jellyfinHttpClient)
+	httpErr := createHttpMux(jellyfinService, jellyfinConfiguration, jellyfinHttpClient, movieWatchlistService)
 	if httpErr != nil {
 		log.Fatal(httpErr)
 	}
@@ -106,11 +106,13 @@ func createJellyfinClient(cfg config.JellyfinConfiguration) (jellyfinHttp.Client
 	return jHttpClient, nil
 }
 
-func createHttpMux(jService service.JellyfinService, jCfg config.JellyfinConfiguration, hClient jellyfinHttp.Client) error {
+func createHttpMux(jService service.JellyfinService, jCfg config.JellyfinConfiguration,
+	hClient jellyfinHttp.Client, mwlService service.MovieWatchlistService) error {
 	cfg := jellyfinHttp.Config{
 		JellyfinConfiguration: jCfg,
 		JellyfinService:       jService,
 		HttpClient:            hClient,
+		MovieWatchlistService: mwlService,
 	}
 	rc := jellyfinHttp.NewController(cfg)
 

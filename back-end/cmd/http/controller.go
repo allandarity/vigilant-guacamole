@@ -19,12 +19,14 @@ type restController struct {
 	jellyfinService       service.JellyfinService
 	httpClient            Client
 	jellyfinConfiguration config.JellyfinConfiguration
+	movieWatchlistService service.MovieWatchlistService
 }
 
 type Config struct {
 	JellyfinConfiguration config.JellyfinConfiguration
 	JellyfinService       service.JellyfinService
 	HttpClient            Client
+	MovieWatchlistService service.MovieWatchlistService
 }
 
 func NewController(cfg Config) Controller {
@@ -33,6 +35,7 @@ func NewController(cfg Config) Controller {
 		jellyfinService:       cfg.JellyfinService,
 		httpClient:            cfg.HttpClient,
 		jellyfinConfiguration: cfg.JellyfinConfiguration,
+		movieWatchlistService: cfg.MovieWatchlistService,
 	}
 	c.DefineRoutes()
 	return c
@@ -42,6 +45,10 @@ func (c restController) DefineRoutes() {
 	c.mux.HandleFunc(
 		"/movies/random",
 		c.GetRandomMovies(3),
+	)
+	c.mux.HandleFunc(
+		"/movies/watchlist/random",
+		c.GetRandomMoviesFromWatchlist(3),
 	)
 }
 
@@ -82,5 +89,19 @@ func (c restController) GetRandomMovies(count int) http.HandlerFunc {
 		if err != nil {
 			fmt.Printf("Error writing response body", "error", err)
 		}
+	}
+}
+
+func (c restController) GetRandomMoviesFromWatchlist(count int) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		}
+		ctx := r.Context()
+		movies, err := c.movieWatchlistService.GetRandomMovieWatchlist(ctx, count)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		}
+		fmt.Println(movies)
 	}
 }
