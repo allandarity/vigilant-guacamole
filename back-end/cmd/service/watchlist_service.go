@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/csv"
 	"fmt"
 	"go-jellyfin-api/cmd/model"
@@ -16,7 +17,8 @@ const (
 )
 
 type WatchlistService interface {
-	LoadWatchlistCSV() (model.Watchlist, error)
+	LoadWatchlistCSV(ctx context.Context) (model.Watchlist, error)
+	GetAllWatchlist(ctx context.Context) ([]model.WatchlistItem, error)
 }
 
 type watchlistService struct {
@@ -29,13 +31,26 @@ func NewWatchlistService(repository repository.WatchlistRepository) WatchlistSer
 	}
 }
 
-func (w *watchlistService) LoadWatchlistCSV() (model.Watchlist, error) {
+func (w *watchlistService) LoadWatchlistCSV(ctx context.Context) (model.Watchlist, error) {
 	path := RESOURCE_LOCATION + WATCHLIST_FILENAME
 	result, err := readCsvFile(path)
 	if err != nil {
 		return model.Watchlist{}, err
 	}
+	err = w.repository.PopulateDatabase(ctx, result)
+	if err != nil {
+		fmt.Println(err)
+		return model.Watchlist{}, err
+	}
 	return result, nil
+}
+
+func (w *watchlistService) GetAllWatchlist(ctx context.Context) ([]model.WatchlistItem, error) {
+	list, err := w.repository.GetAllWatchlist(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return list, nil
 }
 
 func readCsvFile(filePath string) (model.Watchlist, error) {

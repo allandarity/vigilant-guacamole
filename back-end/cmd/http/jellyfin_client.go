@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go-jellyfin-api/cmd/config"
 	"go-jellyfin-api/cmd/model"
 	"io"
 	"net/http"
@@ -22,29 +23,29 @@ type Client interface {
 	MakeHttpClientRequest(request *http.Request) ([]byte, error)
 	GetAllMoviesRequest(parentId string) (model.Items, error)
 	AuthenticateByName() error
-	PopualateMovieImageData(items model.Items) (*model.Items, error)
+	PopulateMovieImageData(items model.Items) (*model.Items, error)
 }
 
 type jellyfinHttpClient struct {
 	authResponse          model.AuthResponse
-	host                  string
-	authenticationRequest model.AuthRequest
+	jellyfinConfiguration config.JellyfinConfiguration
 }
 
-func NewClient() (Client, error) {
+func NewClient(cfg config.JellyfinConfiguration) (Client, error) {
 	return &jellyfinHttpClient{
-		authResponse: model.AuthResponse{},
+		authResponse:          model.AuthResponse{},
+		jellyfinConfiguration: cfg,
 	}, nil
 }
 
 func (h *jellyfinHttpClient) AuthenticateByName() error {
-	requestBody, err := json.Marshal(h.jellyfinService.BuildAuthenticationRequest())
+	requestBody, err := json.Marshal(h.jellyfinConfiguration.BuildAuthenticationRequest())
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequest("POST", h.jellyfinService.GetHost()+"/Users/AuthenticateByName", bytes.NewBuffer(requestBody))
-	req.Header.Set("Authorization", h.jellyfinService.BuildMediaBrowserIdentifier())
+	req, err := http.NewRequest("POST", h.jellyfinConfiguration.GetHost()+"/Users/AuthenticateByName", bytes.NewBuffer(requestBody))
+	req.Header.Set("Authorization", h.jellyfinConfiguration.BuildMediaBrowserIdentifier())
 	req.Header.Set("content-type", "application/json")
 
 	if err != nil {
@@ -55,17 +56,14 @@ func (h *jellyfinHttpClient) AuthenticateByName() error {
 	if err != nil {
 		return err
 	}
-	// TODO: do i even need to do anything with this? do i need to auth at all?
-	fmt.Println(string(resp))
 	if err := json.Unmarshal(resp, &h.authResponse); err != nil {
-		fmt.Println("can't unmarshal")
+		fmt.Println("can't unmarshal authResponse")
 		return err
 	}
-
 	return nil
 }
 
-func (h jellyfinHttpClient) GetMovieFolderParentId() (string, error) {
+func (h *jellyfinHttpClient) GetMovieFolderParentId() (string, error) {
 	httpRequest, err := h.GetRequest(h.getMovieParentIdRequestUrl())
 	if err != nil {
 		fmt.Println("Failed to make request to " + h.getMovieParentIdRequestUrl())
@@ -79,7 +77,7 @@ func (h jellyfinHttpClient) GetMovieFolderParentId() (string, error) {
 
 	var items model.Items
 	if err := json.Unmarshal(httpResponse, &items); err != nil {
-		fmt.Println("failed to unmarshal")
+		fmt.Println("failed to unmarshal", err)
 		return "", err
 	}
 
@@ -94,19 +92,19 @@ func (h jellyfinHttpClient) GetMovieFolderParentId() (string, error) {
 	return collection.Id, nil
 }
 
-func (h jellyfinHttpClient) GetRequest(url string) (*http.Request, error) {
+func (h *jellyfinHttpClient) GetRequest(url string) (*http.Request, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("Authorization", h.jellyfinService.BuildMediaBrowserIdentifier())
+	req.Header.Set("Authorization", h.jellyfinConfiguration.BuildMediaBrowserIdentifier())
 	req.Header.Set("content-type", "application/json")
 
 	return req, nil
 }
 
-func (h jellyfinHttpClient) MakeHttpClientRequest(request *http.Request) ([]byte, error) {
+func (h *jellyfinHttpClient) MakeHttpClientRequest(request *http.Request) ([]byte, error) {
 	client := &http.Client{}
 	resp, err := client.Do(request)
 	if err != nil {
@@ -123,12 +121,12 @@ func (h jellyfinHttpClient) MakeHttpClientRequest(request *http.Request) ([]byte
 	return respBody, nil
 }
 
-func (h jellyfinHttpClient) getMovieParentIdRequestUrl() string {
-	return fmt.Sprintf("%s/Users/%s/Items", h.jellyfinService.GetHost(), h.authResponse.User.Id)
+func (h *jellyfinHttpClient) getMovieParentIdRequestUrl() string {
+	return fmt.Sprintf("%s/Users/%s/Items", h.jellyfinConfiguration.GetHost(), h.authResponse.User.Id)
 }
 
-func (h jellyfinHttpClient) GetAllMoviesRequest(parentId string) (model.Items, error) {
-	url := fmt.Sprintf("%s/Users/%s/Items?ParentId=%s", h.jellyfinService.GetHost(), h.authResponse.User.Id, parentId)
+func (h *jellyfinHttpClient) GetAllMoviesRequest(parentId string) (model.Items, error) {
+	url := fmt.Sprintf("%s/Users/%s/Items?ParentId=%s", h.jellyfinConfiguration.GetHost(), h.authResponse.User.Id, parentId)
 	req, err := h.GetRequest(url)
 	if err != nil {
 		return model.Items{}, err
@@ -146,25 +144,34 @@ func (h jellyfinHttpClient) GetAllMoviesRequest(parentId string) (model.Items, e
 	return items, nil
 }
 
-func (h jellyfinHttpClient) PopualateMovieImageData(items model.Items) (*model.Items, error) {
+// TODO: skip this if db is full
+func (h *jellyfinHttpClient) PopulateMovieImageData(items model.Items) (*model.Items, error) {
 	for i := range items.ItemElements {
 		item := &items.ItemElements[i]
-		getImageUrl := fmt.Sprintf("%s/Items/%s/Images/Primary?MaxWidth=%d&MaxHeight=%d",
-			h.jellyfinService.GetHost(), item.Id, ImageMaxWidth, ImageMaxHeight)
-		req, err := h.GetRequest(getImageUrl)
+		image, err := h.getMovieImageData(item)
 		if err != nil {
-			return nil, fmt.Errorf("error creating request url=%s: %w", getImageUrl, err)
-		}
-		resp, err := h.MakeHttpClientRequest(req)
-		if err != nil {
-			return nil, fmt.Errorf("error making HTTP request url=%s: %w", getImageUrl, err)
+			return nil, err
 		}
 
 		a, _ := strconv.Atoi(item.Id)
 		var movieImage model.MovieImage
 		movieImage.MovieId = a
-		movieImage.ImageData = resp
+		movieImage.ImageData = image
 		item.Image = movieImage
 	}
 	return &items, nil
+}
+
+func (h *jellyfinHttpClient) getMovieImageData(item *model.ItemsElement) ([]byte, error) {
+	getImageUrl := fmt.Sprintf("%s/Items/%s/Images/Primary?MaxWidth=%d&MaxHeight=%d",
+		h.jellyfinConfiguration.GetHost(), item.Id, ImageMaxWidth, ImageMaxHeight)
+	req, err := h.GetRequest(getImageUrl)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request url=%s: %w", getImageUrl, err)
+	}
+	resp, err := h.MakeHttpClientRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("error making HTTP request url=%s: %w", getImageUrl, err)
+	}
+	return resp, nil
 }

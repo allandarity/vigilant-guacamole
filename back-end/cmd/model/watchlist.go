@@ -7,6 +7,7 @@ type Watchlist struct {
 }
 
 type WatchlistItem struct {
+	Id           int
 	Title        string
 	DateAdded    time.Time
 	DateReleased time.Time

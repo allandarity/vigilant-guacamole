@@ -10,7 +10,8 @@ import (
 )
 
 type WatchlistRepository interface {
-	PopulateDatabse(ctx context.Context, items model.Watchlist) error
+	PopulateDatabase(ctx context.Context, items model.Watchlist) error
+	GetAllWatchlist(ctx context.Context) ([]model.WatchlistItem, error)
 }
 
 type watchlistRepository struct {
@@ -23,12 +24,12 @@ func NewWatchlistRepository(pool *pgxpool.Pool) WatchlistRepository {
 	}
 }
 
-func (w *watchlistRepository) PopulateDatabse(ctx context.Context, items model.Watchlist) error {
+func (w *watchlistRepository) PopulateDatabase(ctx context.Context, items model.Watchlist) error {
 	batch := &pgx.Batch{}
 	for _, item := range items.WatchlistItems {
 		batch.Queue(
 			`
-      INSERT INTO watchlist(title, production_year, date_added)
+      INSERT INTO watchlist(title, production_year, added_date)
       VALUES ($1, $2, $3)
       `,
 			item.Title,
@@ -45,4 +46,25 @@ func (w *watchlistRepository) PopulateDatabse(ctx context.Context, items model.W
 		}
 	}
 	return nil
+}
+
+func (w *watchlistRepository) GetAllWatchlist(ctx context.Context) ([]model.WatchlistItem, error) {
+	query := `
+		SELECT id, title, production_year, added_date from watchlist
+	`
+	rows, err := w.pool.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var watchlist []model.WatchlistItem
+	for rows.Next() {
+		var item model.WatchlistItem
+		if err := rows.Scan(&item.Id, &item.Title, &item.DateReleased, &item.DateAdded); err != nil {
+			return nil, err
+		}
+		watchlist = append(watchlist, item)
+	}
+	return watchlist, nil
 }
