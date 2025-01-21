@@ -13,6 +13,8 @@ type MovieRepository interface {
 	PopulateMovieDatabase(ctx context.Context, items *model.Items) error
 	GetMovieByName(ctx context.Context, name string) (*model.Movie, error)
 	GetRandomMovies(ctx context.Context, numberOfMovies int) ([]model.MovieWithImage, error)
+	GetAllMovies(ctx context.Context) ([]model.Movie, error)
+	GetMovieById(ctx context.Context, id int) (*model.Movie, error)
 }
 
 type movieRepository struct {
@@ -23,6 +25,19 @@ func NewMovieRepository(pool *pgxpool.Pool) MovieRepository {
 	return &movieRepository{
 		pool: pool,
 	}
+}
+
+func (m *movieRepository) GetMovieById(ctx context.Context, id int) (*model.Movie, error) {
+	var movie model.Movie
+	err := m.pool.QueryRow(
+		ctx,
+		"SELECT title, production_year, community_rating from movie where id = $1",
+		id,
+	).Scan(&movie.Name, movie.ProductionYear, movie.CommunityRating)
+	if err != nil {
+		return nil, err
+	}
+	return &movie, nil
 }
 
 func (m *movieRepository) GetMovieByName(ctx context.Context, name string) (*model.Movie, error) {
@@ -103,6 +118,28 @@ func (m *movieRepository) GetRandomMovies(ctx context.Context, numberOfMovies in
 			return nil, err
 		}
 		movie.MovieImage.MovieId = movie.Movie.Id
+		movies = append(movies, movie)
+	}
+	return movies, nil
+}
+
+func (m *movieRepository) GetAllMovies(ctx context.Context) ([]model.Movie, error) {
+	query := `
+		SELECT id, jellyfin_id, title, production_year, community_rating from movie
+	`
+	rows, err := m.pool.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var movies []model.Movie
+	for rows.Next() {
+		var movie model.Movie
+		if err := rows.Scan(&movie.Id, &movie.JellyfinId, &movie.Name,
+			&movie.ProductionYear, &movie.CommunityRating); err != nil {
+			return nil, err
+		}
 		movies = append(movies, movie)
 	}
 	return movies, nil

@@ -9,7 +9,7 @@ type Movie struct {
 	Id              int
 	JellyfinId      string
 	Name            string
-	ProductionYear  int16
+	ProductionYear  int
 	CommunityRating float32
 }
 

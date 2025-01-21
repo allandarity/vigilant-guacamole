@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	jellyfinHttpClient "go-jellyfin-api/cmd/http"
-	"go-jellyfin-api/cmd/jellyfin"
+	"go-jellyfin-api/cmd/config"
+	jellyfinHttp "go-jellyfin-api/cmd/http"
 	"go-jellyfin-api/cmd/repository"
+	"go-jellyfin-api/cmd/service"
 	"log"
 	"net/http"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// TODO: clean this main func up
 func main() {
 	// TODO: is this timeout acceptable?
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -31,11 +33,12 @@ func main() {
 
 	movieRepository := repository.NewMovieRepository(pool)
 
-	jellyfinClient, err := jellyfin.NewClient()
+	jellyfinConfiguration, err := config.NewJellyfinConfiguration()
 	if err != nil {
 		log.Fatal(err)
 	}
-	jellyfinHttpClient, err := createJellyfinHttpClient(jellyfinClient)
+	jellyfinService := service.NewJellyfinService(jellyfinConfiguration, movieRepository)
+	jellyfinHttpClient, err := createJellyfinClient(jellyfinConfiguration)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -52,7 +55,7 @@ func main() {
 	}
 
 	fmt.Println("updating images")
-	allMoviesImageUpdated, err := jellyfinHttpClient.PopualateMovieImageData(allMovies)
+	allMoviesImageUpdated, err := jellyfinHttpClient.PopulateMovieImageData(allMovies)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -62,15 +65,33 @@ func main() {
 		log.Fatal(err)
 	}
 
+	fmt.Println("reading csv file")
+	watchlistRepository := repository.NewWatchlistRepository(pool)
+	watchlistService := service.NewWatchlistService(watchlistRepository)
+	_, err = watchlistService.LoadWatchlistCSV(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("creating join table")
+	movieService := service.NewMovieService(movieRepository)
+	movieWatchlistRepository := repository.NewMovieWatchlistRepository(pool)
+	movieWatchlistService := service.NewMovieWatchlistService(movieService, watchlistService, movieWatchlistRepository)
+	mwl, err := movieWatchlistService.PopulateDatabase(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(mwl)
+
 	fmt.Println("starting mux")
-	httpErr := createHttpMux(jellyfinClient, movieRepository, jellyfinHttpClient)
+	httpErr := createHttpMux(jellyfinService, jellyfinConfiguration, jellyfinHttpClient, movieWatchlistService)
 	if httpErr != nil {
 		log.Fatal(httpErr)
 	}
 }
 
-func createJellyfinHttpClient(jClient jellyfin.Client) (jellyfinHttpClient.Client, error) {
-	jHttpClient, err := jellyfinHttpClient.NewClient(jClient)
+func createJellyfinClient(cfg config.JellyfinConfiguration) (jellyfinHttp.Client, error) {
+	jHttpClient, err := jellyfinHttp.NewClient(cfg)
 	if err != nil {
 		fmt.Println("Failed to create jellyfinHttpClient")
 		return nil, err
@@ -85,13 +106,15 @@ func createJellyfinHttpClient(jClient jellyfin.Client) (jellyfinHttpClient.Clien
 	return jHttpClient, nil
 }
 
-func createHttpMux(jClient jellyfin.Client, db repository.MovieRepository, hClient jellyfinHttpClient.Client) error {
-	cfg := jellyfinHttpClient.Config{
-		JellyfinClient:  jClient,
-		MovieRepository: db,
-		HttpClient:      hClient,
+func createHttpMux(jService service.JellyfinService, jCfg config.JellyfinConfiguration,
+	hClient jellyfinHttp.Client, mwlService service.MovieWatchlistService) error {
+	cfg := jellyfinHttp.Config{
+		JellyfinConfiguration: jCfg,
+		JellyfinService:       jService,
+		HttpClient:            hClient,
+		MovieWatchlistService: mwlService,
 	}
-	rc := jellyfinHttpClient.NewController(cfg)
+	rc := jellyfinHttp.NewController(cfg)
 
 	httpServeError := http.ListenAndServe(":8080", rc.DefineMiddleware(rc.GetMux()))
 	if httpServeError != nil {
@@ -117,19 +140,19 @@ func initDatabase() (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create migration: %w", err)
 	}
-	if err := migration.Up(); err != nil && err != migrate.ErrNoChange {
+	if err := migration.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return nil, fmt.Errorf("run migration: %w", err)
 	}
 
-	config, err := pgxpool.ParseConfig(databaseUrl)
+	pxgPoolConfig, err := pgxpool.ParseConfig(databaseUrl)
 	if err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
 
-	config.MaxConns = 25
-	config.MinConns = 5
+	pxgPoolConfig.MaxConns = 25
+	pxgPoolConfig.MinConns = 5
 
-	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	pool, err := pgxpool.NewWithConfig(context.Background(), pxgPoolConfig)
 	if err != nil {
 		return nil, fmt.Errorf("create pool: %w", err)
 	}
