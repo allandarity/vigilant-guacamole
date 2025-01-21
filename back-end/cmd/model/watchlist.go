@@ -7,8 +7,9 @@ type Watchlist struct {
 }
 
 type WatchlistItem struct {
-	Id           int
-	Title        string
-	DateAdded    time.Time
-	DateReleased time.Time
+	Id            int
+	Title         string
+	DateAdded     time.Time
+	DateReleased  time.Time
+	LetterboxdUri string
 }

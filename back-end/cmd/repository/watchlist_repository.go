@@ -29,12 +29,14 @@ func (w *watchlistRepository) PopulateDatabase(ctx context.Context, items model.
 	for _, item := range items.WatchlistItems {
 		batch.Queue(
 			`
-      INSERT INTO watchlist(title, production_year, added_date)
-      VALUES ($1, $2, $3)
+      INSERT INTO watchlist(title, production_year, added_date, letterboxd_uri)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (letterboxd_uri) DO NOTHING 
       `,
 			item.Title,
 			item.DateReleased,
 			item.DateAdded,
+			item.LetterboxdUri,
 		)
 	}
 

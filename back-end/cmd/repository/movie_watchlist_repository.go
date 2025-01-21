@@ -11,6 +11,7 @@ import (
 
 type MovieWatchlistRepository interface {
 	InsertPairs(ctx context.Context, pairs []model.MovieWatchlistPair) error
+	GetRandomMovies(ctx context.Context, noOfMovies int) ([]model.MovieWatchlistPair, error)
 }
 
 type movieWatchlistRepository struct {
@@ -43,4 +44,35 @@ func (m *movieWatchlistRepository) InsertPairs(ctx context.Context, pairs []mode
 	}
 
 	return nil
+}
+
+func (m *movieWatchlistRepository) GetRandomMovies(ctx context.Context, noOfMovies int) ([]model.MovieWatchlistPair, error) {
+	query := `
+		SELECT movie_id, watchlist_id, added_date
+		FROM movie_watchlist
+		ORDER BY RANDOM()
+		LIMIT $1
+	`
+	rows, err := m.pool.Query(ctx, query, noOfMovies)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var movies []model.MovieWatchlistPair
+	for rows.Next() {
+		var movie model.MovieWatchlistPair
+		err := rows.Scan(
+			&movie.MovieId,
+			&movie.WatchlistId,
+			&movie.AddedDate,
+		)
+		if err != nil {
+			return nil, err
+		}
+		movies = append(movies, movie)
+	}
+	if len(movies) == 0 {
+		return nil, fmt.Errorf("no watchlist movies found")
+	}
+	return movies, nil
 }

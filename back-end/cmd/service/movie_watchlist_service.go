@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"go-jellyfin-api/cmd/model"
 	"go-jellyfin-api/cmd/repository"
 	"strings"
@@ -57,9 +58,18 @@ func (mw *movieWatchlistService) PopulateDatabase(ctx context.Context) ([]model.
 }
 
 func (mw *movieWatchlistService) GetRandomMovieWatchlist(ctx context.Context, noOfMovies int) ([]model.MovieWatchlistPair, error) {
-	return nil, nil
+	items, err := mw.repo.GetRandomMovies(ctx, noOfMovies)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println("items", items)
+	var movies []model.Movie
+	for _, item := range items {
+		movies = append(movies, *mw.mService.GetMovieById(ctx, item.MovieId))
+	}
+	return items, nil
 }
 
 func (mw *movieWatchlistService) matches(movie model.Movie, watchlist model.WatchlistItem) bool {
-	return strings.EqualFold(movie.Name, watchlist.Title) && int(movie.ProductionYear) == watchlist.DateReleased.Year()
+	return strings.EqualFold(movie.Name, watchlist.Title) && movie.ProductionYear == watchlist.DateReleased.Year()
 }

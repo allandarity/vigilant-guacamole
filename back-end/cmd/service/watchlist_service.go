@@ -82,6 +82,7 @@ func mapToWatchlist(records [][]string) model.Watchlist {
 		item.DateAdded = parseTime("2006-01-02", record[0])
 		item.Title = record[1]
 		item.DateReleased = parseTime("2006", record[2])
+		item.LetterboxdUri = record[3]
 		watchlistItems = append(watchlistItems, item)
 	}
 	watchlist.WatchlistItems = watchlistItems

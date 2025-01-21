@@ -103,5 +103,16 @@ func (c restController) GetRandomMoviesFromWatchlist(count int) http.HandlerFunc
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		}
 		fmt.Println(movies)
+		jsonBody, err := json.Marshal(movies)
+		if err != nil {
+			fmt.Printf("Error marshalling movies to JSON", "error", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, err = w.Write(jsonBody)
+		if err != nil {
+			fmt.Printf("Error writing response body", "error", err)
+		}
 	}
 }
