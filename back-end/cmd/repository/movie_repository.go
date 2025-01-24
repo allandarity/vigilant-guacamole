@@ -14,7 +14,8 @@ type MovieRepository interface {
 	GetMovieByName(ctx context.Context, name string) (*model.Movie, error)
 	GetRandomMovies(ctx context.Context, numberOfMovies int) ([]model.MovieWithImage, error)
 	GetAllMovies(ctx context.Context) ([]model.Movie, error)
-	GetMovieById(ctx context.Context, id int) (*model.Movie, error)
+	GetMovieById(ctx context.Context, id int) (model.Movie, error)
+	GetMovieByIdWithImage(ctx context.Context, id int) (model.MovieWithImage, error)
 }
 
 type movieRepository struct {
@@ -27,17 +28,40 @@ func NewMovieRepository(pool *pgxpool.Pool) MovieRepository {
 	}
 }
 
-func (m *movieRepository) GetMovieById(ctx context.Context, id int) (*model.Movie, error) {
+func (m *movieRepository) GetMovieById(ctx context.Context, id int) (model.Movie, error) {
 	var movie model.Movie
 	err := m.pool.QueryRow(
 		ctx,
-		"SELECT title, production_year, community_rating from movie where id = $1",
+		"SELECT id, jellyfin_id, title, production_year, community_rating from movie where id = $1",
 		id,
-	).Scan(&movie.Name, movie.ProductionYear, movie.CommunityRating)
+	).Scan(&movie.Id, &movie.JellyfinId, &movie.Name, &movie.ProductionYear, &movie.CommunityRating)
 	if err != nil {
-		return nil, err
+		return model.Movie{}, err
 	}
-	return &movie, nil
+	return movie, nil
+}
+
+func (m *movieRepository) GetMovieByIdWithImage(ctx context.Context, id int) (model.MovieWithImage, error) {
+	var movie model.MovieWithImage
+	query := `
+    SELECT m.id, m.jellyfin_id, m.title, m.production_year, m.community_rating, mi.image_data
+    FROM movie m
+    LEFT JOIN movie_image mi ON m.id = mi.movie_id
+  `
+	err := m.pool.QueryRow(
+		ctx, query, id,
+	).Scan(
+		&movie.Movie.Id,
+		&movie.Movie.JellyfinId,
+		&movie.Movie.Name,
+		&movie.Movie.ProductionYear,
+		&movie.Movie.CommunityRating,
+		&movie.MovieImage.ImageData,
+	)
+	if err != nil {
+		return model.MovieWithImage{}, err
+	}
+	return movie, nil
 }
 
 func (m *movieRepository) GetMovieByName(ctx context.Context, name string) (*model.Movie, error) {
@@ -46,7 +70,7 @@ func (m *movieRepository) GetMovieByName(ctx context.Context, name string) (*mod
 		ctx,
 		"SELECT title, production_year, community_rating from movie where name = $1",
 		name,
-	).Scan(&movie.Name, movie.ProductionYear, movie.CommunityRating)
+	).Scan(&movie.Name, &movie.ProductionYear, &movie.CommunityRating)
 	if err != nil {
 		return nil, nil
 	}

@@ -4,6 +4,7 @@ import App from './App.tsx'
 import './index.css'
 import { RouterProvider, createBrowserRouter } from 'react-router-dom'
 import AllRecommendations from './pages/allReccomendations/AllReccomendations.tsx'
+import LetterboxdRecommendations from "./pages/letterboxdRecommendations/LetterboxdReccomendations.tsx";
 
 
 const router = createBrowserRouter([
@@ -14,6 +15,10 @@ const router = createBrowserRouter([
   {
     path: "/all",
     element: <AllRecommendations />
+  },
+  {
+    path: "/watchlist",
+    element: <LetterboxdRecommendations />
   }
 
 ])

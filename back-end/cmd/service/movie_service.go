@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"go-jellyfin-api/cmd/model"
 	"go-jellyfin-api/cmd/repository"
 )
@@ -12,7 +11,8 @@ type MovieService interface {
 	GetMovieByName(ctx context.Context, name string) (*model.Movie, error)
 	GetRandomMovies(ctx context.Context, numberOfMovies int) ([]model.MovieWithImage, error)
 	GetAllMovies(ctx context.Context) ([]model.Movie, error)
-	GetMovieById(ctx context.Context, id int) *model.Movie
+	GetMovieById(ctx context.Context, id int) (model.Movie, error)
+	GetMovieByIdWithImage(ctx context.Context, id int) (model.MovieWithImage, error)
 }
 
 type movieService struct {
@@ -25,14 +25,12 @@ func NewMovieService(repository repository.MovieRepository) MovieService {
 	}
 }
 
-func (m *movieService) GetMovieById(ctx context.Context, id int) *model.Movie {
+func (m *movieService) GetMovieById(ctx context.Context, id int) (model.Movie, error) {
 	movie, err := m.repository.GetMovieById(ctx, id)
 	if err != nil {
-		fmt.Println(err)
-		return nil
+		return model.Movie{}, err
 	}
-
-	return movie
+	return movie, err
 }
 
 func (m *movieService) GetMovieByName(ctx context.Context, name string) (*model.Movie, error) {
@@ -62,4 +60,12 @@ func (m *movieService) GetAllMovies(ctx context.Context) ([]model.Movie, error) 
 		return nil, err
 	}
 	return movies, nil
+}
+
+func (m *movieService) GetMovieByIdWithImage(ctx context.Context, id int) (model.MovieWithImage, error) {
+	movie, err := m.repository.GetMovieByIdWithImage(ctx, id)
+	if err != nil {
+		return model.MovieWithImage{}, err
+	}
+	return movie, nil
 }

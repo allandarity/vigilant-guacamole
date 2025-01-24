@@ -10,7 +10,7 @@ import (
 
 type MovieWatchlistService interface {
 	PopulateDatabase(ctx context.Context) ([]model.MovieWatchlistPair, error)
-	GetRandomMovieWatchlist(ctx context.Context, noOfMovies int) ([]model.MovieWatchlistPair, error)
+	GetRandomMovieWatchlist(ctx context.Context, noOfMovies int) ([]model.MovieWithImage, error)
 }
 
 type movieWatchlistService struct {
@@ -57,17 +57,21 @@ func (mw *movieWatchlistService) PopulateDatabase(ctx context.Context) ([]model.
 	return pairs, nil
 }
 
-func (mw *movieWatchlistService) GetRandomMovieWatchlist(ctx context.Context, noOfMovies int) ([]model.MovieWatchlistPair, error) {
+func (mw *movieWatchlistService) GetRandomMovieWatchlist(ctx context.Context, noOfMovies int) ([]model.MovieWithImage, error) {
 	items, err := mw.repo.GetRandomMovies(ctx, noOfMovies)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("items", items)
-	var movies []model.Movie
+	var movies []model.MovieWithImage
 	for _, item := range items {
-		movies = append(movies, *mw.mService.GetMovieById(ctx, item.MovieId))
+		movie, err := mw.mService.GetMovieByIdWithImage(ctx, item.MovieId)
+		if err != nil {
+			fmt.Println("error with movie", item.MovieId)
+			continue
+		}
+		movies = append(movies, movie)
 	}
-	return items, nil
+	return movies, nil
 }
 
 func (mw *movieWatchlistService) matches(movie model.Movie, watchlist model.WatchlistItem) bool {
