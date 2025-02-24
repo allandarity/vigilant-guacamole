@@ -19,74 +19,142 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// TODO: clean this main func up
+type AppConfig struct {
+	DBPool              *pgxpool.Pool
+	JellyfinConfig      config.JellyfinConfiguration
+	JellyfinClient      jellyfinHttp.Client
+	MovieFolderParentID string
+}
+
+type Services struct {
+	Jellyfin       service.JellyfinService
+	Movie          service.MovieService
+	Watchlist      service.WatchlistService
+	MovieWatchlist service.MovieWatchlistService
+}
+
+type Repositories struct {
+	Movie          repository.MovieRepository
+	Watchlist      repository.WatchlistRepository
+	MovieWatchlist repository.MovieWatchlistRepository
+}
+
+func initializeConfig(ctx context.Context) (*AppConfig, error) {
+	pool, err := initDatabase()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize database: %w", err)
+	}
+
+	jellyfinConfig, err := config.NewJellyfinConfiguration()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Jellyfin configuration: %w", err)
+	}
+
+	jellyfinClient, err := createJellyfinClient(jellyfinConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Jellyfin client: %w", err)
+	}
+
+	movieFolderParentID, err := jellyfinClient.GetMovieFolderParentId()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get movie folder parent ID: %w", err)
+	}
+
+	return &AppConfig{
+		DBPool:              pool,
+		JellyfinConfig:      jellyfinConfig,
+		JellyfinClient:      jellyfinClient,
+		MovieFolderParentID: movieFolderParentID,
+	}, nil
+}
+
+func initializeRepositories(pool *pgxpool.Pool) *Repositories {
+	return &Repositories{
+		Movie:          repository.NewMovieRepository(pool),
+		Watchlist:      repository.NewWatchlistRepository(pool),
+		MovieWatchlist: repository.NewMovieWatchlistRepository(pool),
+	}
+}
+
+func initializeServices(config *AppConfig, repos *Repositories) *Services {
+	return &Services{
+		Jellyfin:  service.NewJellyfinService(config.JellyfinConfig, repos.Movie),
+		Movie:     service.NewMovieService(repos.Movie),
+		Watchlist: service.NewWatchlistService(repos.Watchlist),
+		MovieWatchlist: service.NewMovieWatchlistService(
+			service.NewMovieService(repos.Movie),
+			service.NewWatchlistService(repos.Watchlist),
+			repos.MovieWatchlist,
+		),
+	}
+}
+
+func syncMovieData(ctx context.Context, config *AppConfig, repos *Repositories) error {
+	log.Println("Fetching movies from Jellyfin...")
+	movies, err := config.JellyfinClient.GetAllMoviesRequest(config.MovieFolderParentID)
+	if err != nil {
+		return fmt.Errorf("failed to get movies: %w", err)
+	}
+
+	log.Println("Updating movie images...")
+	moviesWithImages, err := config.JellyfinClient.PopulateMovieImageData(movies)
+	if err != nil {
+		return fmt.Errorf("failed to update movie images: %w", err)
+	}
+
+	log.Println("Populating movie database...")
+	if err := repos.Movie.PopulateMovieDatabase(ctx, moviesWithImages); err != nil {
+		return fmt.Errorf("failed to populate movie database: %w", err)
+	}
+
+	return nil
+}
+
+func syncWatchlistData(ctx context.Context, services *Services) error {
+	log.Println("Loading watchlist from CSV...")
+	if _, err := services.Watchlist.LoadWatchlistCSV(ctx); err != nil {
+		return fmt.Errorf("failed to load watchlist CSV: %w", err)
+	}
+
+	log.Println("Creating movie-watchlist join table...")
+	mwl, err := services.MovieWatchlist.PopulateDatabase(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to populate movie-watchlist database: %w", err)
+	}
+	log.Printf("Movie watchlist populated: %v\n", mwl)
+
+	return nil
+}
+
 func main() {
-	// TODO: is this timeout acceptable?
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	pool, err := initDatabase()
-	if err != nil {
-		panic(err)
-	}
-	defer pool.Close()
-
-	movieRepository := repository.NewMovieRepository(pool)
-
-	jellyfinConfiguration, err := config.NewJellyfinConfiguration()
+	config, err := initializeConfig(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	jellyfinService := service.NewJellyfinService(jellyfinConfiguration, movieRepository)
-	jellyfinHttpClient, err := createJellyfinClient(jellyfinConfiguration)
-	if err != nil {
+	defer config.DBPool.Close()
+
+	repos := initializeRepositories(config.DBPool)
+	services := initializeServices(config, repos)
+
+	if err := syncMovieData(ctx, config, repos); err != nil {
 		log.Fatal(err)
 	}
 
-	movieFolderParentId, err := jellyfinHttpClient.GetMovieFolderParentId()
-	if err != nil {
+	if err := syncWatchlistData(ctx, services); err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println("getting movies")
-	allMovies, err := jellyfinHttpClient.GetAllMoviesRequest(movieFolderParentId)
-	if err != nil {
+	log.Println("Starting HTTP server...")
+	if err := createHttpMux(
+		services.Jellyfin,
+		config.JellyfinConfig,
+		config.JellyfinClient,
+		services.MovieWatchlist,
+	); err != nil {
 		log.Fatal(err)
-	}
-
-	fmt.Println("updating images")
-	allMoviesImageUpdated, err := jellyfinHttpClient.PopulateMovieImageData(allMovies)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Println("populating database")
-	if err := movieRepository.PopulateMovieDatabase(ctx, allMoviesImageUpdated); err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Println("reading csv file")
-	watchlistRepository := repository.NewWatchlistRepository(pool)
-	watchlistService := service.NewWatchlistService(watchlistRepository)
-	_, err = watchlistService.LoadWatchlistCSV(ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Println("creating join table")
-	movieService := service.NewMovieService(movieRepository)
-	movieWatchlistRepository := repository.NewMovieWatchlistRepository(pool)
-	movieWatchlistService := service.NewMovieWatchlistService(movieService, watchlistService, movieWatchlistRepository)
-	mwl, err := movieWatchlistService.PopulateDatabase(ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println(mwl)
-
-	fmt.Println("starting mux")
-	httpErr := createHttpMux(jellyfinService, jellyfinConfiguration, jellyfinHttpClient, movieWatchlistService)
-	if httpErr != nil {
-		log.Fatal(httpErr)
 	}
 }
 
@@ -107,7 +175,8 @@ func createJellyfinClient(cfg config.JellyfinConfiguration) (jellyfinHttp.Client
 }
 
 func createHttpMux(jService service.JellyfinService, jCfg config.JellyfinConfiguration,
-	hClient jellyfinHttp.Client, mwlService service.MovieWatchlistService) error {
+	hClient jellyfinHttp.Client, mwlService service.MovieWatchlistService,
+) error {
 	cfg := jellyfinHttp.Config{
 		JellyfinConfiguration: jCfg,
 		JellyfinService:       jService,
