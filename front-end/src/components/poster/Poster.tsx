@@ -10,13 +10,13 @@ function Poster({show}: PosterProps) {
 
 	const [posterImageData, setPosterImageData] = useState<string>();
 
-useEffect(() => {
-  if (show.movieId && show.imageData) {
-    const blob = new Blob([show.imageData], { type: 'image/jpeg' });
-    const url = URL.createObjectURL(blob);
-    setPosterImageData(url);
-  }
-}, [show]);
+	useEffect(() => {
+		if (show.movieId && show.imageData) {
+			const blob = new Blob([show.imageData], {type: 'image/jpeg'});
+			const url = URL.createObjectURL(blob);
+			setPosterImageData(url);
+		}
+	}, [show]);
 
 
 	const handleClick = () => {
